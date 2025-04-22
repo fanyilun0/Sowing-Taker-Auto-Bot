@@ -4,6 +4,7 @@ const { ethers } = require('ethers');
 const blessed = require('blessed');
 const colors = require('colors');
 const fs = require('fs');
+const path = require('path');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const API_BASE_URL = 'https://sowing-api.taker.xyz';
@@ -44,21 +45,43 @@ if (proxies.length === 0) {
     console.warn('No proxies found in proxies.txt. Running without proxies.');
 }
 
+// 读取.env文件中的私钥
+const readPrivateKeys = () => {
+  const envPath = path.join(__dirname, '.env');
+  try {
+    const content = fs.readFileSync(envPath, 'utf8');
+    return content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => {
+          const key = line.replace(/^0x/, ''); // 兼容带0x前缀的私钥
+            return line && !line.startsWith('#') && /^[0-9a-fA-F]{64}$/.test(key);
+      });
+  } catch (error) {
+    console.error('读取.env文件失败:', error.message);
+    process.exit(1);
+  }
+};
+
+// 修改后的钱包初始化逻辑
 const wallets = [];
-for (let i = 1; ; i++) {
-    const key = process.env[`PRIVATE_KEY_${i}`];
-    if (!key) break;
-    try {
-        const wallet = new ethers.Wallet(key);
-        wallets.push({
-            privateKey: key,
-            address: wallet.address,
-            proxy: proxies.length > 0 ? proxies[Math.floor(Math.random() * proxies.length)] : null,
-        });
-    } catch (error) {
-        console.error(`Invalid PRIVATE_KEY_${i}: ${error.message}`);
-    }
-}
+
+readPrivateKeys().forEach((privateKey, index) => {
+  try {
+    const wallet = new ethers.Wallet(privateKey);
+    wallets.push({
+      privateKey,
+      address: wallet.address,
+      proxy: proxies.length > 0 
+        ? proxies[Math.floor(Math.random() * proxies.length)] 
+        : null
+    });
+    console.log(`✅ 成功加载第 ${index + 1} 个私钥 (${wallet.address.slice(0, 8)}...)`);
+  } catch (error) {
+    console.error(`❌ 第 ${index + 1} 行私钥无效: ${error.message}`);
+  }
+});
+
 if (wallets.length === 0) {
     throw new Error('No valid private keys found in .env file');
 }
